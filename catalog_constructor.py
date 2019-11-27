@@ -3,6 +3,7 @@ import numpy as np
 import os, sys
 from glob import iglob
 import csv
+import time
 class CatalogProcessor:
     def __init__(self, num_catalog_years, file_prefix, num_files):
         ## CatalogProcessor constructor
@@ -36,11 +37,13 @@ class CatalogProcessor:
         self._check_num_catalog_years()
 
         ## Initialize dataframe for year_loss_table
-        self.year_loss_table       = None 
-        self.unique_cresta_codes   = None
-        self.cresta_strings        = []
+        self.year_loss_table         = None 
+        self.unique_cresta_codes     = None
+        self.cresta_strings          = []
+        self.year_loss_dataframe_set = []
 
         self._initialize_year_loss_table()
+
         self.compute_year_loss_table()
         pass
 
@@ -55,56 +58,55 @@ class CatalogProcessor:
         pass
     
     def compute_year_loss_table(self):
+        print("Getting unique cresta codes")
+        self.unique_cresta_codes = []
+        for iDataset in np.arange(1, self.num_files + 1):
+            self.unique_cresta_codes += self._get_cresta_codes(iDataset)
+            self.unique_cresta_codes = np.unique(self.unique_cresta_codes).tolist()  # this can get out of hand without reduction if the number of files is large, so we reduce at each loop
+        self.unique_cresta_codes = np.unique(self.unique_cresta_codes)
+        print("Done Getting unique cresta codes")
         for iDataset in np.arange(1, self.num_files + 1):
             self._process_single_dataset(iDataset)
         self._convert_loss_matrix_to_data_frame_and_save()
         pass
+
+    def _get_cresta_codes(self, part_number):
+        filename  = "%s%d%s"%(self.file_prefix, part_number, self.file_suffix)
+        temp_data = pandas.read_csv(filename, usecols = ["CrestaCode"], dtype = {"CrestaCode": 'str'}, low_memory = False)
+        return temp_data["CrestaCode"].unique().tolist()
+
+
+
 
     def _process_single_dataset(self, part_number):
         filename  = "%s%d%s"%(self.file_prefix, part_number, self.file_suffix)
 
         print("Processing %s"%filename)
 
-        temp_data = pandas.read_csv(filename, usecols = ["YearID", "CrestaCode", "GrossLoss"], dtype = {"YearID": 'int', "CrestaCode": 'str', "GrossLoss": 'float'},low_memory = False)
+        temp_data = pandas.read_csv(filename, usecols = ["YearID", "CrestaCode", "GrossLoss"], dtype = {"YearID": 'int', "CrestaCode": 'str', "GrossLoss": 'float'}, low_memory = False)
 
-        if(part_number == 1):
-            # Makes the assumption that all crestacodes that exist in the dataset are contained in the first file.  
-            # This may not be true in general, but it seems like a reasonable assumption.  I will put a check in later.
-            self.unique_cresta_codes = temp_data.loc[:,"CrestaCode"].unique()
-            # if you don't get a memory error initializing the next line, then the code should 
-            # be able to complete without issue.
-            self.year_loss_matrix    = np.zeros([len(self.year_loss_table), len(self.unique_cresta_codes)])
+        td_2 = pandas.pivot_table(temp_data, values = "GrossLoss", index = "YearID", columns = "CrestaCode", aggfunc = np.sum)
         
-        unique_years = temp_data["YearID"].unique()
+        td_2 = td_2.fillna(0)
 
-        for year_num in unique_years:
-            # losses exist for that year, find the cresta codes that also have data for that year
-            # if losses do not exist for that year, the entry was already populated with zero loss 
-            # during initialization of self.year_loss_matrix
-            filtered_df = temp_data.loc[temp_data["YearID"] == year_num, :]
-            cresta_set  = filtered_df["CrestaCode"].unique()
+        indices     = np.sort(temp_data["YearID"].unique())
 
-            for iCode, cresta_code in enumerate(self.unique_cresta_codes):
-                if cresta_code in cresta_set:
-                    # if the current cresta_code has data for the current year_num, then fill the table
-                    # otherwise it is already set to zero during initialization of self.year_loss_matrix
-                    self.year_loss_matrix[year_num - 1, iCode] = filtered_df.loc[filtered_df["CrestaCode"] == cresta_code, :]["GrossLoss"].sum()
+        cresta_nums = list(td_2.columns.values)
+        
+        matrix = td_2.to_numpy()                                     # never do this if a dataframe has mixed data types in the columns, it will be super slow.  See Pandas documentation
+
+        self.year_loss_dataframe_set.append(pandas.DataFrame(data = matrix, index = indices, columns = cresta_nums)) # create a nicely organized dataframe and append to our year_loss_dataframe_set.  We will merge later.
         pass
 
     def _convert_loss_matrix_to_data_frame_and_save(self):
-        for cresta_code in self.unique_cresta_codes:
-            cresta_as_string = "{}".format(cresta_code)                 # convert from int to string
-            if(len(cresta_as_string) == 4):
-                # add leading zero back
-                cresta_as_string = "0" + cresta_as_string
-            self.cresta_strings.append(cresta_as_string)
+        nDataFrames = len(self.year_loss_dataframe_set)
+        start = pandas.concat([self.year_loss_dataframe_set[0], self.year_loss_dataframe_set[1]])
+        for iDataFrame in range(2,nDataFrames):
+            start = pandas.concat([start, self.year_loss_dataframe_set[iDataFrame]])
 
-        self.year_loss_dataframe = pandas.DataFrame(data = self.year_loss_matrix, \
-            index = np.arange(1, self.year_loss_matrix.shape[0] + 1), \
-            columns = self.cresta_strings)
-
-        self.year_loss_matrix = None # clear the memory
-        self.year_loss_dataframe.to_csv("./outfiles/year_loss_dataframe_%d.csv"%self.num_catalog_years, index = False)
+        print(start)
+        start = start.fillna(0)
+        start.to_csv("./outfiles/year_loss_dataframe_%d.csv"%self.num_catalog_years, index = False)
         pass
  
     def _initialize_year_loss_table(self):
@@ -187,13 +189,13 @@ def get_unique_state_prefixes(num_years):
 
 
 if __name__ == "__main__": 
-    # num_cat_years = 100000                         # 10000 year or 100000 year catalog
-    # prefix        = "./100K/Unfiltered_100k_20190919_part_"
-    # nFiles        = 100
+    num_cat_years = 100000                         # 100000 year catalog
+    prefix        = "./100K/Unfiltered_100k_20190919_part_"
+    nFiles        = 100
 
-    num_cat_years = 10000                         # 10000 year or 100000 year catalog
-    prefix        = "./10K/10k_20180312_part_"    # folder and file prefixes for the individual parts of the chunked loss files.
-    nFiles        = 3
+    # num_cat_years = 10000                         # 10000 year year catalog
+    # prefix        = "./10K/10k_20180312_part_"    # folder and file prefixes for the individual parts of the chunked loss files.
+    # nFiles        = 3
 
     # Preprocess Catalog and save reduced file
     cp            = CatalogProcessor(num_cat_years, prefix, nFiles)  # this line can be commented out once it has been run for a particular catalog once.  Can save time significantly if you want to change the next two functions.

@@ -4,8 +4,9 @@
 Computing Resource Requirements
 
 - Hardware Requirements
--- 12 GB of storage space for storing 10K and 100K Loss Files
---  
+-- 12 GB of storage space for storing 10K and 100K Loss Files (if you store the files locally)
+-- ~8 GB of storage space for temporary files.
+-- 8-20 GB total 
 
 - Software Requirements (earlier versions may work, but no guarantees)
 -- Windows 10 64 Bit Operating System (parts tested on Mac with no issues.  But, no guarantees on the final product)
@@ -20,15 +21,33 @@ Computing Resource Requirements
 ---- glob
 
 - Computing Time
--- This pipeline is computationally expensive.  Processing the 100K catalog can take a few hours.  There are a few
--- spots that this code could be sped up through optimizations and/or multiprocessing use.  
+--- This pipeline is somewhat computationally expensive.  ~ 10 minutes to process the 100K catalog, and ~6 minutes for visualizing the 100K results.  
+--- Not all of the plots are necessary, and can be commented out to reduce the computational time (getting the AAL plots with error for each county is expensive.)
+
+--- Part of the computational cost is due to me coding up a functional pipeline
+--- without using Pandas to its full extent in the beginning of the code, thus I did not format the latter parts to accept
+--- fancy pandas dataframes. Rather than rewrite the pipeline, I have decided to live with a somewhat reasonably fast code.
+--- Numpy is great for a lot of things, but dealing with complicated data matrices (i.e., DataFrames that need level based analysis)
+--- is not something it should be used for.  For loops on pandas Dataframes are terribly slow, and vectorizing level based analysis
+--- cannot be done easily without using built in Pandas functions.
+ 
+--- Also the way that I set up the temporary files is not ideal, and could be changed in later versions to plot the output
+--- on the fly, rather than saving temporary files.  This would be necessary if the catalogs got much larger.  Granted,
+--- it is nice to have the temporary files for smaller datasets for additional post processing if desired.
+
+--- I did not consider that part_1 might not contain all of the cresta codes, which was not a good assumption.  I had to
+--- rework a few things in a bit of an add hoc way (see _get_cresta_codes() implementation).  This results in unnecessary slow
+--- down for the large catalogs.
+
+--- That being said, the code is down from a few hours for the 100K library to ~ 10 minutes, but there is still a lot of 
+--- performance to be gained by addressing the above issues.  Unfortunately, it would be easiest to start somewhat from scratch
+--- and use pandas to its full extent.
 
 Overview of the Pipeline
 
 -- Stage 0: Locating the files and formatting
----- Please copy the following files : catalog_constructor.py    and     visualize_results.py into the directory
----- containing your loss files for the particular catalog.  The actual files should be contained in a folder
----- such as "./10K/" may contain a 10,000 year stochastic catalog.
+---- You will provide the path to your catalog files, so they can be located in arbitrary folders.  However, it may be easier
+---- to copy and paste them into the directory that this repository is cloned into if the storage space is available.
 
 ---- It is assumed that the catalog is separated into chunks with the following file_naming convention:
 ------ "./catalogDirectory/file_prefix_%d.csv"   , where %d is the part (or chunk) number.
