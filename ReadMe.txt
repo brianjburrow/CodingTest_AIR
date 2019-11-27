@@ -83,17 +83,11 @@ Overview of the Pipeline
 ---- similar files exist for the states, but no Average_COV_perYear...
 
 
--- Stage A : replacing catalog_constructor.py with catalog_constructor_multiprocessing_test.py
----- UNTESTED:  uses multiprocessing to load in datasets and compute the year_loss_dataframe variable.
-----            that part of the code takes an excessive amount of time, which can be sped up via multiprocessing.
-----            However, it requires several coding changes, and I have not verified that it is working correctly yet.
 
----- EXTENSION: Computing the AAL Tables is also expensive, but multiprocessing is more challenging.  Would need to
-                separate the year_loss_dataframe into chunks to process a single county at a time.
--- Stage B : test_std_and_mean_calc.py
+-- Stage A : test_std_and_mean_calc.py
 ---- Contains code for testing various speedups for computing the loss statistics.  This is a major bottleneck if done improperly.
 ---- Currently, speedy3 is the fastest, but I cannot get the computation correct, so the values are off.  This should be an iterative std computation.
----- speedy2 is implemented in the above code, with about a 1000x time speedup over speedy.  
+---- speedy4 is implemented in the above code, with about a 1000x time speedup over speedy.  
 ---- brute_force is the slowest method.
 ---- To test, set the number of random samples to a large number to check speed boosts.
-----          set the number of random samples to a small number to compare the outputs (may need to uncomment some print statements)
+----          set the number of random samples to a small number to compare the outputs for correctness (may need to uncomment some print statements)
